@@ -1,9 +1,19 @@
 <?php
-$dsn = 'odbc:DRIVER={IBM INFORMIX ODBC DRIVER};HOST=localhost;SERVER=ol_informix;DATABASE=ems_db;UID=informix;PWD=secret;PROTOCOL=onsoctcp;PORT=9088;';
+function get_db_connection(): PDO
+{
+    static $pdo = null;
 
-try {
-    $pdo = new PDO($dsn);
+    if ($pdo instanceof PDO) {
+        return $pdo;
+    }
+
+    $dsn = getenv('EMS_DB_DSN') ?: 'odbc:DRIVER={IBM INFORMIX ODBC DRIVER};HOST=localhost;SERVER=ol_informix;DATABASE=ems_db;PROTOCOL=onsoctcp;PORT=9088;';
+    $username = getenv('EMS_DB_USER') ?: 'informix';
+    $password = getenv('EMS_DB_PASSWORD') ?: 'secret';
+
+    $pdo = new PDO($dsn, $username, $password);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $exception) {
-    die('Database connection failed.');
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+
+    return $pdo;
 }
