@@ -7,13 +7,18 @@ function get_db_connection(): PDO
         return $pdo;
     }
 
-    $dsn = getenv('EMS_DB_DSN') ?: 'odbc:DRIVER={IBM INFORMIX ODBC DRIVER};HOST=localhost;SERVER=ol_informix;DATABASE=ems_db;PROTOCOL=onsoctcp;PORT=9088;';
-    $username = getenv('EMS_DB_USER') ?: 'informix';
-    $password = getenv('EMS_DB_PASSWORD') ?: 'secret';
+    $sqlitePath = getenv('EMS_DB_PATH') ?: __DIR__ . '/../data/ems.sqlite';
+    $directory = dirname($sqlitePath);
+    if (!is_dir($directory)) {
+        mkdir($directory, 0777, true);
+    }
 
-    $pdo = new PDO($dsn, $username, $password);
+    $dsn = getenv('EMS_DB_DSN') ?: 'sqlite:' . $sqlitePath;
+
+    $pdo = new PDO($dsn);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $pdo->exec('PRAGMA foreign_keys = ON');
 
     return $pdo;
 }

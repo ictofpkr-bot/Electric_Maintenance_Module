@@ -1,6 +1,6 @@
 # Electronic Maintenance System (EMS) — System Design Document
 
-**Stack:** PHP · HTML · CSS · JavaScript · IBM Informix  
+**Stack:** PHP · HTML · CSS · JavaScript · SQLite  
 **Intended audience:** Junior developer / first-year intern  
 **Version:** 1.0
 
@@ -8,19 +8,39 @@
 
 ## Table of Contents
 
-1. [System Architecture Overview](#1-system-architecture-overview)
-2. [User Roles and Permissions](#2-user-roles-and-permissions)
-3. [Application Workflow](#3-application-workflow)
-4. [Page-by-Page Structure and Navigation](#4-page-by-page-structure-and-navigation)
-5. [Database Schema](#5-database-schema)
-6. [Authentication and Authorization](#6-authentication-and-authorization)
-7. [Complaint Lifecycle](#7-complaint-lifecycle)
-8. [Message/Discussion System](#8-messagediscussion-system)
-9. [Folder and Project Structure](#9-folder-and-project-structure)
-10. [Development Roadmap](#10-development-roadmap)
-11. [Security Considerations](#11-security-considerations)
-12. [Future Enhancements](#12-future-enhancements)
-13. [Assumptions, Missing Requirements, and Design Notes](#13-assumptions-missing-requirements-and-design-notes)
+1. [Default Credentials](#0-default-credentials)
+2. [System Architecture Overview](#1-system-architecture-overview)
+3. [User Roles and Permissions](#2-user-roles-and-permissions)
+4. [Application Workflow](#3-application-workflow)
+5. [Page-by-Page Structure and Navigation](#4-page-by-page-structure-and-navigation)
+6. [Database Schema](#5-database-schema)
+7. [Authentication and Authorization](#6-authentication-and-authorization)
+8. [Complaint Lifecycle](#7-complaint-lifecycle)
+9. [Message/Discussion System](#8-messagediscussion-system)
+10. [Folder and Project Structure](#9-folder-and-project-structure)
+11. [Development Roadmap](#10-development-roadmap)
+12. [Security Considerations](#11-security-considerations)
+13. [Future Enhancements](#12-future-enhancements)
+14. [Assumptions, Missing Requirements, and Design Notes](#13-assumptions-missing-requirements-and-design-notes)
+
+---
+
+## 0. Default Credentials
+
+The system comes with three pre-configured user accounts for testing and development:
+
+| Role | Login ID | Password | Full Name |
+|---|---|---|---|
+| Admin | `ADM-001` | `admin123` | System Administrator |
+| User | `USR-2026-0001` | `Password123` | Demo User |
+| EM | `EM-0001` | `Password123` | Demo EM |
+
+**Login paths:**
+- **Admin login:** Navigate to `/admin/login.php` and use `ADM-001` / `admin123`
+- **User login:** From the landing page (`/index.php`), click "User Login" and use `USR-2026-0001` / `Password123`
+- **EM login:** From the landing page (`/index.php`), click "EM Login" and use `EM-0001` / `Password123`
+
+**Note:** These credentials are hardcoded in `scripts/init_db.php` and are automatically created when the database is initialized. Change these passwords immediately in a production environment. To reset the database and recreate default users, run `php scripts/init_db.php`.
 
 ---
 
@@ -35,7 +55,7 @@ Browser (HTML/CSS/JS)
    PHP Pages (.php files)
         │  SQL queries
         ▼
-  IBM Informix Database
+  SQLite file-based database
 ```
 
 **Why this architecture?**  
@@ -132,7 +152,7 @@ The Admin login is accessible via a separate URL (`/admin/login.php`) that is no
 
 ## 5. Database Schema
 
-IBM Informix uses `SERIAL` for auto-increment primary keys and `DATETIME YEAR TO SECOND` for timestamps. `LVARCHAR` is used for long text fields (up to 32,739 characters by default, sufficient for all needs here).
+SQLite uses `INTEGER PRIMARY KEY AUTOINCREMENT` for auto-increment IDs and `TEXT` for variable-length strings. Timestamps are stored as text using `datetime('now')`, which is compatible with the app's local runtime.
 
 ---
 
@@ -227,17 +247,18 @@ users ──────────────< complaints
 
 ---
 
-### Informix-Specific Setup Notes
+### SQLite-Specific Setup Notes
 
-PHP connects to Informix using PDO with the `pdo_informix` extension, or via ODBC. Confirm which driver is installed on the server before writing any database code. A basic connection in `config/db.php` will look like:
+This project now uses a local SQLite database file for development. The default database path is `data/ems.sqlite`, and the connection is configured in `config/db.php`.
 
-```php
-// Using PDO + ODBC DSN (most common setup for Informix on PHP)
-$dsn = "odbc:DRIVER={IBM INFORMIX ODBC DRIVER};HOST=localhost;
-        SERVER=ol_informix;DATABASE=ems_db;UID=informix;PWD=secret;
-        PROTOCOL=onsoctcp;PORT=9088;";
-$pdo = new PDO($dsn);
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+If you want to override the database location, set one of these environment variables:
+- `EMS_DB_PATH` — path to the SQLite file, e.g. `/path/to/ems.sqlite`
+- `EMS_DB_DSN` — full PDO DSN, e.g. `sqlite:/path/to/ems.sqlite`
+
+To initialize the local database and create the required tables, run:
+
+```bash
+php scripts/init_db.php
 ```
 
 Use **prepared statements with named or positional placeholders** (`?`) for every query that uses user-supplied data. Never concatenate user input directly into SQL strings.
@@ -438,7 +459,7 @@ ems/
 Build in this order. Each phase is independently testable before moving to the next.
 
 ### Phase 1 — Foundation (Days 1–2)
-- Set up the Informix database and create all three tables.
+- Set up the local SQLite database and create all three tables.
 - Create `config/db.php` with the database connection.
 - Test the connection by running a simple SELECT query.
 - Create `includes/auth.php`, `includes/header.php`, `includes/footer.php`.
@@ -580,9 +601,9 @@ These are not needed now but are worth designing the system to accommodate.
 
 ### Potential Issues to Address Before Development
 
-**Informix Driver on the Server:** Confirm that the PHP server has the Informix PDO driver (`pdo_informix`) or ODBC driver installed and configured before writing any database code. This is the most common first blocker on Informix + PHP setups. If neither is available, ODBC via `odbc_connect()` is the fallback.
+**SQLite Driver on the Server:** Confirm that the PHP server has the SQLite PDO driver enabled (`pdo_sqlite`). This is the only database dependency required for local development.
 
-**Character Set:** Confirm the Informix database character set (typically `en_US.8859-1` or `en_US.utf8`). Set the PHP connection character set to match, otherwise special characters in names or addresses may display incorrectly.
+**Database File:** The SQLite database is stored locally as `data/ems.sqlite`. If the file does not exist, the app will create it automatically when the first database connection is opened.
 
 **Login ID Generation Race Condition:** If two Admin users try to create accounts simultaneously, the sequential ID generation could assign the same ID twice. For a small internal system this is negligible, but the `UNIQUE` constraint on `login_id` will catch it at the database level and PHP should display a friendly retry message.
 

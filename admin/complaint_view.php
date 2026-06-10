@@ -1,11 +1,11 @@
 <?php
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/auth.php';
-require_role('em');
+require_role('admin');
 
 $complaintId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
 if ($complaintId <= 0) {
-    header('Location: /em/dashboard.php');
+    header('Location: /admin/complaints.php');
     exit;
 }
 
@@ -15,7 +15,7 @@ $stmt->execute([$complaintId]);
 $complaint = $stmt->fetch();
 
 if (!$complaint) {
-    header('Location: /em/dashboard.php');
+    header('Location: /admin/complaints.php');
     exit;
 }
 
@@ -36,7 +36,7 @@ require_once __DIR__ . '/../includes/header.php';
         <p>Review the complaint details, status updates, and communication thread for this request.</p>
     </div>
     <div class="page-actions">
-        <a class="button button-secondary" href="/em/dashboard.php">Back to dashboard</a>
+        <a class="button button-secondary" href="/admin/complaints.php">Back to complaints</a>
     </div>
 </section>
 <?php if ($successMessage !== ''): ?>
@@ -81,24 +81,6 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </section>
 <section class="card">
-    <h2>Update Status</h2>
-    <?php if ($complaint['status'] === 'open'): ?>
-        <form method="post" action="/em/status_update.php" class="stacked-form">
-            <input type="hidden" name="complaint_id" value="<?php echo htmlspecialchars($complaintId, ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="new_status" value="pending">
-            <button class="button button-primary" type="submit">Mark as Pending</button>
-        </form>
-    <?php elseif ($complaint['status'] === 'pending'): ?>
-        <form method="post" action="/em/status_update.php" class="stacked-form">
-            <input type="hidden" name="complaint_id" value="<?php echo htmlspecialchars($complaintId, ENT_QUOTES, 'UTF-8'); ?>">
-            <input type="hidden" name="new_status" value="closed">
-            <button class="button button-primary" type="submit">Close Complaint</button>
-        </form>
-    <?php else: ?>
-        <p>This complaint is closed and cannot be updated.</p>
-    <?php endif; ?>
-</section>
-<section class="card">
     <h2>Messages</h2>
     <?php if (count($messages) === 0): ?>
         <p>No messages yet.</p>
@@ -115,19 +97,6 @@ require_once __DIR__ . '/../includes/header.php';
                 </div>
             <?php endforeach; ?>
         </div>
-    <?php endif; ?>
-
-    <?php if ($complaint['status'] === 'pending'): ?>
-        <form method="post" action="/message_send.php" class="stacked-form">
-            <input type="hidden" name="complaint_id" value="<?php echo htmlspecialchars($complaintId, ENT_QUOTES, 'UTF-8'); ?>">
-            <label>
-                Add a message
-                <textarea name="message_text" rows="4" required></textarea>
-            </label>
-            <button class="button button-primary" type="submit">Send Message</button>
-        </form>
-    <?php else: ?>
-        <p>Messages are available when the complaint is pending.</p>
     <?php endif; ?>
 </section>
 <?php require_once __DIR__ . '/../includes/footer.php';

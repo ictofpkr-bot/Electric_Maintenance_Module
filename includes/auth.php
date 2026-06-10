@@ -36,7 +36,7 @@ function start_auth_session(array $user): void
 
 function authenticate_login(PDO $pdo, string $loginId, string $password, string $role): ?array
 {
-    $stmt = $pdo->prepare('SELECT user_id, login_id, password_hash, role, full_name FROM users WHERE login_id = ? AND role = ? AND is_active = 1 FETCH FIRST 1 ROW ONLY');
+    $stmt = $pdo->prepare('SELECT user_id, login_id, password_hash, role, full_name FROM users WHERE login_id = ? AND role = ? AND is_active = 1 LIMIT 1');
     $stmt->execute([$loginId, $role]);
     $user = $stmt->fetch();
 

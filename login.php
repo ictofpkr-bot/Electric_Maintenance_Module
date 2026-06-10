@@ -3,24 +3,21 @@ require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/auth.php';
 
 $role = $_GET['role'] ?? 'user';
-if ($role === 'admin') {
-    header('Location: /admin/login.php');
-    exit;
-}
-
-if (!in_array($role, ['user', 'em'], true)) {
+if (!in_array($role, ['user', 'em', 'admin'], true)) {
     $role = 'user';
 }
 
-$roleLabel = $role === 'em' ? 'EM Login' : 'User Login';
+$roleLabel = $role === 'admin' ? 'Admin Login' : ($role === 'em' ? 'EM Login' : 'User Login');
 $errorMessage = '';
 $loginId = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postedRole = $_POST['role'] ?? $role;
-    if (!in_array($postedRole, ['user', 'em'], true)) {
+    if (!in_array($postedRole, ['user', 'em', 'admin'], true)) {
         $postedRole = $role;
     }
+    $role = $postedRole;
+    $roleLabel = $role === 'admin' ? 'Admin Login' : ($role === 'em' ? 'EM Login' : 'User Login');
 
     $loginId = trim((string) ($_POST['login_id'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
@@ -68,10 +65,5 @@ require_once __DIR__ . '/includes/header.php';
         </label>
         <button class="button button-primary" type="submit">Login</button>
     </form>
-
-    <div class="role-switcher">
-        <a href="/login.php?role=user">User Login</a>
-        <a href="/login.php?role=em">EM Login</a>
-    </div>
 </section>
 <?php require_once __DIR__ . '/includes/footer.php';
