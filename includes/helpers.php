@@ -2,20 +2,47 @@
 function generate_login_id(PDO $pdo, string $role): string
 {
     $role = strtolower($role);
-    $prefix = 'USR';
+
     if ($role === 'em') {
         $prefix = 'EM';
     } elseif ($role === 'admin') {
         $prefix = 'ADM';
+    } else {
+        $prefix = 'USR';
     }
 
-    $countStmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE role = ?');
-    $countStmt->execute([$role]);
-    $count = (int) $countStmt->fetchColumn();
-    $nextNumber = $count + 1;
-
+    // Use MAX on the numeric suffix rather than COUNT so that deactivated
+    // users and any gaps in the sequence never cause a duplicate login_id.
     if ($prefix === 'USR') {
-        return sprintf('%s-%s-%04d', $prefix, date('Y'), $nextNumber);
+        $pattern = 'USR-' . date('Y') . '-%';
+        $stmt = $pdo->prepare(
+            "SELECT login_id FROM users WHERE login_id LIKE ? ORDER BY user_id DESC LIMIT 1"
+        );
+        $stmt->execute([$pattern]);
+        $last = $stmt->fetchColumn();
+
+        $nextNumber = 1;
+        if ($last !== false) {
+            // login_id format: USR-YYYY-NNNN
+            $parts = explode('-', $last);
+            $nextNumber = (int) end($parts) + 1;
+        }
+
+        return sprintf('USR-%s-%04d', date('Y'), $nextNumber);
+    }
+
+    $pattern = $prefix . '-%';
+    $stmt = $pdo->prepare(
+        "SELECT login_id FROM users WHERE login_id LIKE ? ORDER BY user_id DESC LIMIT 1"
+    );
+    $stmt->execute([$pattern]);
+    $last = $stmt->fetchColumn();
+
+    $nextNumber = 1;
+    if ($last !== false) {
+        // login_id format: EM-NNNN or ADM-NNNN
+        $parts = explode('-', $last);
+        $nextNumber = (int) end($parts) + 1;
     }
 
     return sprintf('%s-%04d', $prefix, $nextNumber);
@@ -35,22 +62,15 @@ function generate_password(int $length = 12): string
 
 function text_length(string $text): int
 {
-    if (function_exists('mb_strlen')) {
-        return mb_strlen($text, 'UTF-8');
-    }
-
-    return strlen($text);
+    return mb_strlen($text, 'UTF-8');
 }
 
 function text_truncate(string $text, int $maxLength, string $suffix = '...'): string
 {
-    if (function_exists('mb_strimwidth')) {
-        return mb_strimwidth($text, 0, $maxLength, $suffix, 'UTF-8');
-    }
-
-    if (strlen($text) <= $maxLength) {
+    if (mb_strlen($text, 'UTF-8') <= $maxLength) {
         return $text;
     }
 
-    return substr($text, 0, max(0, $maxLength - strlen($suffix))) . $suffix;
+    $suffixLen = mb_strlen($suffix, 'UTF-8');
+    return mb_substr($text, 0, max(0, $maxLength - $suffixLen), 'UTF-8') . $suffix;
 }

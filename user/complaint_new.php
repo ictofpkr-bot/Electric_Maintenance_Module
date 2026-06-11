@@ -39,9 +39,11 @@ require_once __DIR__ . '/../includes/header.php';
     <form method="post" action="" class="stacked-form">
         <label>
             Complaint description
-            <textarea name="description" rows="6" maxlength="500"><?php echo htmlspecialchars($description, ENT_QUOTES, 'UTF-8'); ?></textarea>
+            <textarea name="description" id="description" rows="6" maxlength="500"><?php echo htmlspecialchars($description, ENT_QUOTES, 'UTF-8'); ?></textarea>
         </label>
-        <p class="hint">Maximum 500 characters.</p>
+        <p class="hint">
+            <span data-char-counter="description">0 characters</span> / 500 maximum.
+        </p>
         <button class="button button-primary" type="submit">Submit Complaint</button>
     </form>
 </section>

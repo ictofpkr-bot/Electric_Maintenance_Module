@@ -26,19 +26,20 @@ if (!$complaint) {
 }
 
 $currentStatus = $complaint['status'];
-$valid = ($currentStatus === 'open' && $newStatus === 'pending') || ($currentStatus === 'pending' && $newStatus === 'closed');
+$valid = ($currentStatus === 'open' && $newStatus === 'pending')
+      || ($currentStatus === 'pending' && $newStatus === 'closed');
+
 if (!$valid) {
     header('Location: /em/complaint_view.php?id=' . urlencode($complaintId) . '&error=' . urlencode('Invalid status transition.'));
     exit;
 }
 
 if ($newStatus === 'closed') {
-    $update = $pdo->prepare("UPDATE complaints SET status = ?, updated_at = datetime('now'), closed_at = datetime('now') WHERE complaint_id = ?");
-    $update->execute([$newStatus, $complaintId]);
+    $update = $pdo->prepare('UPDATE complaints SET status = ?, updated_at = NOW(), closed_at = NOW() WHERE complaint_id = ?');
 } else {
-    $update = $pdo->prepare("UPDATE complaints SET status = ?, updated_at = datetime('now'), closed_at = NULL WHERE complaint_id = ?");
-    $update->execute([$newStatus, $complaintId]);
+    $update = $pdo->prepare('UPDATE complaints SET status = ?, updated_at = NOW(), closed_at = NULL WHERE complaint_id = ?');
 }
+$update->execute([$newStatus, $complaintId]);
 
 header('Location: /em/complaint_view.php?id=' . urlencode($complaintId) . '&success=' . urlencode('Complaint status updated.'));
 exit;

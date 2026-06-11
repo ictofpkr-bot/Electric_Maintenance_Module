@@ -7,22 +7,35 @@ $pdo = get_db_connection();
 
 $allowedSort = [
     'submitted_at' => 'Submitted',
-    'status' => 'Status',
-    'user_name' => 'User',
+    'status'       => 'Status',
+    'user_name'    => 'User',
     'complaint_id' => 'ID',
 ];
+
+$sortColumnMap = [
+    'submitted_at' => 'c.submitted_at',
+    'status'       => 'c.status',
+    'user_name'    => 'u.full_name',
+    'complaint_id' => 'c.complaint_id',
+];
+
 $sort = $_GET['sort'] ?? 'submitted_at';
 if (!array_key_exists($sort, $allowedSort)) {
     $sort = 'submitted_at';
 }
 $order = isset($_GET['order']) && in_array($_GET['order'], ['asc', 'desc'], true) ? $_GET['order'] : 'desc';
 
+$sortColumn  = $sortColumnMap[$sort];
 $orderClause = $order === 'asc' ? 'ASC' : 'DESC';
-$sortClause = $sort === 'user_name' ? 'user_name' : $sort;
 
-$complaintsStmt = $pdo->prepare('SELECT c.complaint_id, c.description, c.status, c.submitted_at, u.full_name AS user_name FROM complaints c JOIN users u ON c.user_id = u.user_id ORDER BY ' . $sortClause . ' ' . $orderClause);
-$complaintsStmt->execute();
+$complaintsStmt = $pdo->query(
+    'SELECT c.complaint_id, c.description, c.status, c.submitted_at, u.full_name AS user_name
+     FROM complaints c
+     JOIN users u ON c.user_id = u.user_id
+     ORDER BY ' . $sortColumn . ' ' . $orderClause
+);
 $complaints = $complaintsStmt->fetchAll();
+
 require_once __DIR__ . '/../includes/helpers.php';
 
 $pageTitle = 'EM Dashboard';

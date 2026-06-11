@@ -4,7 +4,14 @@ require_once __DIR__ . '/../includes/auth.php';
 require_role('admin');
 
 $pdo = get_db_connection();
-$usersStmt = $pdo->query('SELECT user_id, login_id, full_name, role, contact_number, is_active FROM users ORDER BY role, full_name');
+
+$showInactive = isset($_GET['show_inactive']);
+
+if ($showInactive) {
+    $usersStmt = $pdo->query('SELECT user_id, login_id, full_name, role, contact_number, is_active FROM users ORDER BY role, full_name');
+} else {
+    $usersStmt = $pdo->query('SELECT user_id, login_id, full_name, role, contact_number, is_active FROM users WHERE is_active = 1 ORDER BY role, full_name');
+}
 $users = $usersStmt->fetchAll();
 
 $successMessage = $_GET['success'] ?? '';
@@ -22,6 +29,11 @@ require_once __DIR__ . '/../includes/header.php';
         <?php endif; ?>
     </div>
     <div class="page-actions">
+        <?php if ($showInactive): ?>
+            <a class="button button-secondary" href="/admin/users.php">Hide deactivated</a>
+        <?php else: ?>
+            <a class="button button-secondary" href="/admin/users.php?show_inactive=1">Show deactivated</a>
+        <?php endif; ?>
         <a class="button button-primary" href="/admin/user_create.php">Create User</a>
         <a class="button button-secondary" href="/admin/import_users.php">Import Users</a>
     </div>
@@ -56,7 +68,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <?php if ($user['is_active']): ?>
                                 <form method="post" action="/admin/user_delete.php" style="display:inline; margin:0; padding:0;">
                                     <input type="hidden" name="user_id" value="<?php echo htmlspecialchars($user['user_id'], ENT_QUOTES, 'UTF-8'); ?>">
-                                    <button class="button button-link" type="submit" onclick="return confirm('Deactivate this user?');">Delete</button>
+                                    <button class="button button-link" type="submit" onclick="return confirm('Deactivate this user?');">Deactivate</button>
                                 </form>
                             <?php endif; ?>
                         </td>

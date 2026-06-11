@@ -28,7 +28,9 @@ $userRole = $_SESSION['role'] ?? '';
             <?php elseif ($userRole === 'em'): ?>
                 <a href="/em/dashboard.php">EM Dashboard</a>
             <?php endif; ?>
-            <a href="/logout.php">Logout</a>
+            <form method="post" action="/logout.php" style="margin:0;">
+                <button type="submit" class="button button-secondary" style="min-height:36px;padding:0.4rem 1rem;">Logout</button>
+            </form>
         <?php else: ?>
             <a href="/login.php?role=user">User Login</a>
             <a href="/login.php?role=em">EM Login</a>
