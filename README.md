@@ -645,3 +645,4 @@ This section lists gaps and corrections between the original design document and
 - **Admin password reset:** Admins currently have no way to reset a user's password through the UI. Implement a "Reset Password" action on `admin/user_edit.php` that generates a new credential and displays it once.
 
 - **`admin/login.php` redirect notice:** The redirect in `admin/login.php` is a bare `header('Location: ...')` with no fallback HTML for clients that do not follow redirects. Add a `<meta http-equiv="refresh">` fallback and a link.
+  DvcddQ0jp13Sk
