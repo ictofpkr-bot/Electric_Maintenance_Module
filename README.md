@@ -1,27 +1,28 @@
 # Electronic Maintenance System (EMS) — System Design Document
 
-**Stack:** PHP · HTML · CSS · JavaScript · SQLite  
-**Intended audience:** Junior developer / first-year intern  
-**Version:** 1.0
+**Stack:** PHP · HTML · CSS · JavaScript · MySQL
+**Intended audience:** Junior developer / first-year intern
+**Version:** 1.1
 
 ---
 
 ## Table of Contents
 
-1. [Default Credentials](#0-default-credentials)
-2. [System Architecture Overview](#1-system-architecture-overview)
-3. [User Roles and Permissions](#2-user-roles-and-permissions)
-4. [Application Workflow](#3-application-workflow)
-5. [Page-by-Page Structure and Navigation](#4-page-by-page-structure-and-navigation)
-6. [Database Schema](#5-database-schema)
-7. [Authentication and Authorization](#6-authentication-and-authorization)
-8. [Complaint Lifecycle](#7-complaint-lifecycle)
-9. [Message/Discussion System](#8-messagediscussion-system)
+1.  [Default Credentials](#0-default-credentials)
+2.  [System Architecture Overview](#1-system-architecture-overview)
+3.  [User Roles and Permissions](#2-user-roles-and-permissions)
+4.  [Application Workflow](#3-application-workflow)
+5.  [Page-by-Page Structure and Navigation](#4-page-by-page-structure-and-navigation)
+6.  [Database Schema](#5-database-schema)
+7.  [Authentication and Authorization](#6-authentication-and-authorization)
+8.  [Complaint Lifecycle](#7-complaint-lifecycle)
+9.  [Message/Discussion System](#8-messagediscussion-system)
 10. [Folder and Project Structure](#9-folder-and-project-structure)
 11. [Development Roadmap](#10-development-roadmap)
 12. [Security Considerations](#11-security-considerations)
 13. [Future Enhancements](#12-future-enhancements)
 14. [Assumptions, Missing Requirements, and Design Notes](#13-assumptions-missing-requirements-and-design-notes)
+15. [Changes Still Needed](#14-changes-still-needed)
 
 ---
 
@@ -36,11 +37,11 @@ The system comes with three pre-configured user accounts for testing and develop
 | EM | `EM-0001` | `Password123` | Demo EM |
 
 **Login paths:**
-- **Admin login:** Navigate to `/admin/login.php` and use `ADM-001` / `admin123`
-- **User login:** From the landing page (`/index.php`), click "User Login" and use `USR-2026-0001` / `Password123`
-- **EM login:** From the landing page (`/index.php`), click "EM Login" and use `EM-0001` / `Password123`
+- **Admin login:** Navigate to `/login.php?role=admin` (or `/admin/login.php`, which redirects there)
+- **User login:** From the landing page (`/index.php`), click "User Login" or go to `/login.php?role=user`
+- **EM login:** From the landing page (`/index.php`), click "EM Login" or go to `/login.php?role=em`
 
-**Note:** These credentials are hardcoded in `scripts/init_db.php` and are automatically created when the database is initialized. Change these passwords immediately in a production environment. To reset the database and recreate default users, run `php scripts/init_db.php`.
+**Note:** These credentials are hardcoded in `scripts/init_db.php` and are automatically created when the database is initialized. Change these passwords immediately in a production environment. To reset the database and recreate default users, run `php scripts/init_db.php`. The admin password can be overridden before running init by setting the `EMS_ADMIN_PASSWORD` environment variable.
 
 ---
 
@@ -53,16 +54,19 @@ Browser (HTML/CSS/JS)
         │  HTTP request
         ▼
    PHP Pages (.php files)
-        │  SQL queries
+        │  SQL queries via PDO
         ▼
-  SQLite file-based database
+  MySQL database (or SQLite via EMS_DB_DSN)
 ```
 
-**Why this architecture?**  
+**Why this architecture?**
 It is the simplest possible structure for this kind of system. Each PHP page handles one job: it receives a request, talks to the database, and sends back an HTML page. There are no APIs, no JSON endpoints, no JavaScript frameworks to learn. A developer who knows basic PHP and SQL can read any file and immediately understand what it does.
 
-**Sessions for login state:**  
-PHP sessions are used to remember who is logged in. When a user logs in successfully, their `user_id` and `role` are stored in the PHP `$_SESSION`. Every protected page checks the session at the top before doing anything else.
+**Sessions for login state:**
+PHP sessions are used to remember who is logged in. When a user logs in successfully, their `user_id`, `role`, `full_name`, and `login_id` are stored in the PHP `$_SESSION`. Every protected page checks the session at the top before doing anything else.
+
+**Database:**
+The primary database is MySQL. The connection is configured in `config/db.php` (git-ignored; copy from `config/db.example.php`). The DSN can be overridden via the `EMS_DB_DSN` environment variable, which also allows SQLite to be used for local development if preferred.
 
 ---
 
@@ -74,6 +78,7 @@ PHP sessions are used to remember who is logged in. When a user logs in successf
 | Import users via CSV | ✅ | ❌ | ❌ |
 | View all users | ✅ | ❌ | ❌ |
 | View complaint statistics | ✅ | ❌ | ❌ |
+| View all complaints (read-only) | ✅ | ❌ | ❌ |
 | Submit a new complaint | ❌ | ✅ | ❌ |
 | View own complaints | ❌ | ✅ | ❌ |
 | Track complaint status | ❌ | ✅ | ❌ |
@@ -81,30 +86,25 @@ PHP sessions are used to remember who is logged in. When a user logs in successf
 | Update complaint status | ❌ | ❌ | ✅ |
 | Send messages on a complaint | ❌ | ✅ | ✅ |
 
-**Design decision:** The Admin is purely a management role. They do not handle complaints directly. If the client later needs the Admin to interact with complaints, that is a straightforward addition (see Section 12).
+**Design decision:** The Admin is a management role. They can view complaints in read-only mode for auditing purposes but cannot modify them. If the client later needs the Admin to interact with complaints directly, that is a straightforward addition (see Section 12).
 
 ---
 
 ## 3. Application Workflow
 
 ### Landing Page
-The landing page (index.php) is the first page a user sees. It contains two buttons:
-- **User Login** — for regular users to access the complaint portal
-- **EM Login** — for Electronic Maintenance personnel
-
-The Admin login is accessible via a separate URL (`/admin/login.php`) that is not prominently linked on the landing page. This is a common practice for internal admin panels — it reduces accidental access and does not expose admin functionality to general users.
+The landing page (`index.php`) is the first page a user sees. The navigation bar contains login links for all three roles. The Admin login is also accessible via `/admin/login.php`, which simply redirects to the shared login page with the admin role pre-set.
 
 ### Full Workflow Narrative
 
 ```
 1. User opens the application in a browser.
-2. They see the landing page with two login options.
-3. They choose their role and are taken to the login page.
-4. They enter their credentials (login ID + password).
-5. PHP checks the credentials against the database.
-6. If valid, a session is created and they are redirected to their dashboard.
-7. From the dashboard, they perform their role-specific actions.
-8. When done, they click Logout, which destroys the session and returns them to the landing page.
+2. They see the landing page and click a login link from the nav bar.
+3. They enter their credentials (login ID + password).
+4. PHP checks the credentials against the database.
+5. If valid, a session is created and they are redirected to their dashboard.
+6. From the dashboard, they perform their role-specific actions.
+7. When done, they click Logout, which destroys the session and returns them to the landing page.
 ```
 
 ---
@@ -114,20 +114,20 @@ The Admin login is accessible via a separate URL (`/admin/login.php`) that is no
 ### Public Pages (no login required)
 | Page | File | Purpose |
 |---|---|---|
-| Landing Page | `index.php` | Entry point. Two login buttons. |
-| User Login | `login.php?role=user` | Login form for Users |
-| EM Login | `login.php?role=em` | Login form for EM personnel |
-| Admin Login | `admin/login.php` | Separate admin login |
+| Landing Page | `index.php` | Entry point with role login links in the nav bar |
+| Login | `login.php?role=user\|em\|admin` | Shared login handler — role is set via query string |
 
 ### Admin Pages (requires Admin session)
 | Page | File | Purpose |
 |---|---|---|
-| Admin Dashboard | `admin/dashboard.php` | Total users, complaint stats |
-| User List | `admin/users.php` | Table of all users with Edit/Delete actions |
+| Admin Dashboard | `admin/dashboard.php` | Total users and complaint stats by status |
+| User List | `admin/users.php` | Table of all users with Edit/Deactivate actions |
 | Create User | `admin/user_create.php` | Form to add a single user |
 | Edit User | `admin/user_edit.php?id=X` | Form to edit an existing user |
-| Delete User | `admin/user_delete.php?id=X` | POST-only action, no view |
-| Import Users | `admin/import_users.php` | CSV upload and preview |
+| Delete User | `admin/user_delete.php` | POST-only action; soft-deletes the user |
+| Import Users | `admin/import_users.php` | CSV upload and preview of generated credentials |
+| All Complaints | `admin/complaints.php` | Read-only complaint list, filterable by status |
+| Complaint Detail | `admin/complaint_view.php?id=X` | Read-only complaint detail and message thread |
 
 ### User Pages (requires User session)
 | Page | File | Purpose |
@@ -139,47 +139,47 @@ The Admin login is accessible via a separate URL (`/admin/login.php`) that is no
 ### EM Pages (requires EM session)
 | Page | File | Purpose |
 |---|---|---|
-| EM Dashboard | `em/dashboard.php` | List of all complaints, filterable by status |
+| EM Dashboard | `em/dashboard.php` | List of all complaints, sortable by field |
 | View Complaint | `em/complaint_view.php?id=X` | Complaint details + status updater + message thread |
 
 ### Shared Actions
 | File | Purpose |
 |---|---|
-| `logout.php` | Destroys session, redirects to index.php |
+| `logout.php` | POST-only; destroys session and redirects to `index.php` |
 | `message_send.php` | POST-only handler for submitting a message |
 
 ---
 
 ## 5. Database Schema
 
-SQLite uses `INTEGER PRIMARY KEY AUTOINCREMENT` for auto-increment IDs and `TEXT` for variable-length strings. Timestamps are stored as text using `datetime('now')`, which is compatible with the app's local runtime.
+The production database is MySQL. Tables are created by `scripts/init_db.php`. The same script seeds the three default accounts.
 
 ---
 
 ### Table: `users`
 
-Stores all system users — Admins, regular Users, and EM personnel — in a single table, differentiated by a `role` column. This is simpler than separate tables and makes login logic identical for all roles.
+Stores all system users — Admins, regular Users, and EM personnel — in a single table differentiated by a `role` column.
 
 ```sql
 CREATE TABLE users (
-    user_id         SERIAL          PRIMARY KEY,
-    login_id        VARCHAR(20)     NOT NULL UNIQUE,
-    password_hash   VARCHAR(255)    NOT NULL,
-    role            VARCHAR(10)     NOT NULL,  -- 'admin', 'user', 'em'
-    full_name       VARCHAR(100)    NOT NULL,
-    contact_number  VARCHAR(20),
-    personal_number VARCHAR(50),
-    address         LVARCHAR(300),
-    created_at      DATETIME YEAR TO SECOND DEFAULT CURRENT YEAR TO SECOND,
-    is_active       SMALLINT        DEFAULT 1
-);
+    user_id         INT UNSIGNED     NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    login_id        VARCHAR(20)      NOT NULL UNIQUE,
+    password_hash   VARCHAR(255)     NOT NULL,
+    role            ENUM('admin','user','em') NOT NULL,
+    full_name       VARCHAR(100)     NOT NULL,
+    contact_number  VARCHAR(20)      NULL,
+    personal_number VARCHAR(50)      NULL,
+    address         VARCHAR(300)     NULL,
+    created_at      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_active       TINYINT(1)       NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 **Column notes:**
-- `login_id`: Auto-generated at creation. Format: `USR-YYYY-NNNN` for Users, `EM-NNNN` for EM staff, `ADM-001` for the Admin. Examples: `USR-2024-0043`, `EM-0012`.
-- `password_hash`: The output of PHP's `password_hash()` function. Raw passwords are never stored.
-- `role`: Only three allowed values. Enforced at the application layer.
-- `is_active`: `1` = active, `0` = deactivated. Soft delete — user records are never physically deleted, just deactivated. This preserves complaint history.
+- `login_id`: Auto-generated at creation. Format: `USR-YYYY-NNNN` for Users, `EM-NNNN` for EM staff, `ADM-NNNN` for Admins. Examples: `USR-2026-0043`, `EM-0012`.
+- `password_hash`: The output of PHP's `password_hash()`. Raw passwords are never stored.
+- `role`: Only three allowed values. Enforced at the application layer via an `ENUM`.
+- `is_active`: `1` = active, `0` = deactivated. Soft delete — user records are never physically removed. This preserves complaint history.
 - `personal_number`: Assumed to be a government-issued ID or employee number. Stored as a string to accommodate different formats.
 
 ---
@@ -190,43 +190,45 @@ Stores every complaint submitted by a User.
 
 ```sql
 CREATE TABLE complaints (
-    complaint_id    SERIAL          PRIMARY KEY,
-    user_id         INTEGER         NOT NULL REFERENCES users(user_id),
-    description     LVARCHAR(500)   NOT NULL,
-    status          VARCHAR(10)     NOT NULL DEFAULT 'open',  -- 'open', 'pending', 'closed'
-    submitted_at    DATETIME YEAR TO SECOND DEFAULT CURRENT YEAR TO SECOND,
-    updated_at      DATETIME YEAR TO SECOND DEFAULT CURRENT YEAR TO SECOND,
-    closed_at       DATETIME YEAR TO SECOND
-);
+    complaint_id    INT UNSIGNED     NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id         INT UNSIGNED     NOT NULL,
+    description     VARCHAR(500)     NOT NULL,
+    status          ENUM('open','pending','closed') NOT NULL DEFAULT 'open',
+    submitted_at    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    closed_at       DATETIME         NULL,
+    CONSTRAINT fk_complaints_user FOREIGN KEY (user_id) REFERENCES users(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 **Column notes:**
-- `user_id`: Links the complaint to the user who submitted it.
-- `status`: Starts as `'open'` automatically. EM personnel are the only ones who can change it.
-- `submitted_at`: Set automatically at the time of INSERT. The PHP code does not need to supply this.
-- `updated_at`: Updated every time the status changes.
+- `status`: Starts as `'open'` automatically. Only EM personnel can change it.
+- `submitted_at`: Set automatically at INSERT time.
+- `updated_at`: Auto-updated on every row change via `ON UPDATE CURRENT_TIMESTAMP`.
 - `closed_at`: Null until the complaint is marked `'closed'`. Records the exact resolution timestamp.
 
 ---
 
 ### Table: `messages`
 
-Stores all messages in the discussion thread attached to a complaint. Messages are only meaningful when a complaint is in `'pending'` status, but the table design does not enforce this — the application layer controls when the message form is shown.
+Stores all messages in the discussion thread attached to a complaint.
 
 ```sql
 CREATE TABLE messages (
-    message_id      SERIAL          PRIMARY KEY,
-    complaint_id    INTEGER         NOT NULL REFERENCES complaints(complaint_id),
-    sender_id       INTEGER         NOT NULL REFERENCES users(user_id),
-    message_text    LVARCHAR(1000)  NOT NULL,
-    sent_at         DATETIME YEAR TO SECOND DEFAULT CURRENT YEAR TO SECOND
-);
+    message_id      INT UNSIGNED     NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    complaint_id    INT UNSIGNED     NOT NULL,
+    sender_id       INT UNSIGNED     NOT NULL,
+    message_text    VARCHAR(1000)    NOT NULL,
+    sent_at         DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_messages_complaint FOREIGN KEY (complaint_id) REFERENCES complaints(complaint_id),
+    CONSTRAINT fk_messages_sender    FOREIGN KEY (sender_id)    REFERENCES users(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 **Column notes:**
 - `complaint_id`: Ties every message to exactly one complaint.
 - `sender_id`: Can be a User or an EM — both can send messages on the same thread.
-- `message_text`: 1000 characters is generous for a maintenance discussion thread.
+- `message_text`: 1000 characters max.
 
 ---
 
@@ -247,21 +249,25 @@ users ──────────────< complaints
 
 ---
 
-### SQLite-Specific Setup Notes
-
-This project now uses a local SQLite database file for development. The default database path is `data/ems.sqlite`, and the connection is configured in `config/db.php`.
-
-If you want to override the database location, set one of these environment variables:
-- `EMS_DB_PATH` — path to the SQLite file, e.g. `/path/to/ems.sqlite`
-- `EMS_DB_DSN` — full PDO DSN, e.g. `sqlite:/path/to/ems.sqlite`
-
-To initialize the local database and create the required tables, run:
+### Setup
 
 ```bash
+# 1. Copy and configure the database connection
+cp config/db.example.php config/db.php
+# Edit config/db.php with your MySQL credentials
+
+# 2. Create tables and seed default accounts
 php scripts/init_db.php
+
+# 3. (Optional) override the admin password before seeding
+EMS_ADMIN_PASSWORD=mysecretpassword php scripts/init_db.php
 ```
 
-Use **prepared statements with named or positional placeholders** (`?`) for every query that uses user-supplied data. Never concatenate user input directly into SQL strings.
+To use SQLite instead (local development only), set:
+- `EMS_DB_DSN=sqlite:/path/to/ems.sqlite` — full PDO DSN
+- `EMS_DB_PATH=/path/to/ems.sqlite` — path only (DSN is built automatically)
+
+Use **prepared statements with positional placeholders** (`?`) for every query that uses user-supplied data. Never concatenate user input directly into SQL strings.
 
 ---
 
@@ -278,18 +284,18 @@ Use **prepared statements with named or positional placeholders** (`?`) for ever
 6. If password does not match → show error "Invalid credentials"
 7. If password matches:
    a. Start session (session_start())
-   b. Store in session: $_SESSION['user_id'], $_SESSION['role'], $_SESSION['full_name']
+   b. Store in session: user_id, role, full_name, login_id
    c. Regenerate session ID (prevents session fixation attacks)
    d. Redirect to the correct dashboard based on role
 ```
 
-**One generic error message** is used for both "user not found" and "wrong password" cases. This is intentional — different messages would tell an attacker which half of their guess was wrong.
+**One generic error message** is used for both "user not found" and "wrong password" cases to prevent user enumeration.
 
 ---
 
 ### Access Control on Every Protected Page
 
-Every page inside `admin/`, `user/`, and `em/` folders must start with an authorization check. This is done via a reusable function in `includes/auth.php`:
+Every page inside `admin/`, `user/`, and `em/` must start with an authorization check via `require_role()` in `includes/auth.php`:
 
 ```
 Function: require_role($required_role)
@@ -304,21 +310,20 @@ Every protected page calls this function as its very first line, before any HTML
 
 ### Auto-Generating Login IDs and Passwords
 
-When Admin creates a new User:
-1. PHP counts existing `'user'` role accounts and assigns the next sequential number.
-2. Login ID format: `USR-{YYYY}-{zero-padded 4 digit number}` (e.g., `USR-2024-0001`).
-3. A random 8-character alphanumeric password is generated using PHP's `random_bytes()` or `bin2hex(random_bytes(4))`.
-4. The plain-text password is displayed **once** on the success screen so the Admin can hand it to the user.
-5. The password is immediately hashed and only the hash is stored.
-6. There is no "send by email" step — Admin writes it down or prints the page.
+When Admin creates a new user:
+1. PHP finds the last existing login ID for that role and increments the number suffix (uses `ORDER BY user_id DESC LIMIT 1`, not `COUNT`, so gaps from deactivated accounts never cause duplicates).
+2. Login ID format: `USR-{YYYY}-{zero-padded 4 digits}`, `EM-{0000}`, or `ADM-{0000}`.
+3. A random 10-character password is generated using `random_int()` over a defined alphabet (no ambiguous characters).
+4. The plain-text password is displayed **once** on the success screen.
+5. Only the bcrypt hash is stored.
 
-For CSV import, the same logic is applied in a loop for each row.
+For CSV import, the same logic runs in a loop for each row.
 
 ---
 
 ### Logout
 
-`logout.php` destroys the session (`session_destroy()`) and redirects to `index.php`. This is a POST action triggered by a logout button to prevent the browser back button from re-triggering logout accidentally.
+`logout.php` accepts POST only. It calls `session_unset()` then `session_destroy()` and redirects to `index.php`. POST-only prevents the browser back button from accidentally re-triggering logout.
 
 ---
 
@@ -327,30 +332,28 @@ For CSV import, the same logic is applied in a loop for each row.
 ### Status States and Transitions
 
 ```
-         [Submit]            [Pending]             [Resolved]
-OPEN ──────────────> OPEN ──────────> PENDING ──────────> CLOSED
-                     (default)         (EM action)         (EM action)
+         [Submit]            [EM action]           [EM action]
+  ──────────────────> OPEN ──────────> PENDING ──────────> CLOSED
+                     (default)                            (terminal)
 ```
 
-Status transitions are one-directional and only EM personnel can trigger them:
+Transitions are one-directional and only EM personnel can trigger them:
 - `open` → `pending`: EM has picked up the complaint and is working on it.
 - `pending` → `closed`: EM has resolved the complaint.
 - `closed` is a terminal state. No further transitions are allowed.
-
-**Why no backwards transitions?** Simplicity. If a complaint needs to be "re-opened," EM can add a message explaining the situation. Backwards transitions add complexity without adding meaningful value for this use case.
 
 ---
 
 ### Complaint Submission (User)
 
 ```
-1. User is on the dashboard (user/dashboard.php)
-2. User clicks "New Complaint"
-3. User fills out the description textarea (max 500 chars, enforced client-side with JS counter + server-side with PHP check)
-4. User submits the form (POST to user/complaint_new.php)
-5. PHP validates the input
-6. PHP inserts into complaints table with status = 'open', submitted_at = CURRENT
-7. User is redirected to dashboard with a success message
+1. User navigates to user/complaint_new.php
+2. User fills out the description textarea (max 500 chars)
+   — live character counter updates via main.js
+3. User submits the form (POST)
+4. PHP validates length with mb_strlen()
+5. PHP inserts into complaints table: status = 'open'
+6. User is redirected to dashboard with a success message
 ```
 
 ---
@@ -358,26 +361,27 @@ Status transitions are one-directional and only EM personnel can trigger them:
 ### Complaint Status Update (EM)
 
 ```
-1. EM is on dashboard (em/dashboard.php), sees list of complaints
-2. EM clicks on a complaint
-3. Complaint detail page shows: description, current status, submitter info, message thread
-4. EM sees a "Update Status" button/dropdown
-5. EM selects new status and submits (POST)
-6. PHP checks: is the transition valid? (open→pending or pending→closed only)
-7. PHP updates complaints table: status = new_status, updated_at = CURRENT
-8. If status = 'closed', also sets closed_at = CURRENT
-9. EM is redirected back to the complaint detail page with a success message
+1. EM opens em/complaint_view.php
+2. The "Update Status" section shows a context-sensitive button:
+   — "Mark as Pending" when status is open
+   — "Close Complaint" when status is pending
+   — No button when status is closed
+3. EM submits the form (POST to em/status_update.php)
+4. PHP validates the transition (open→pending or pending→closed only)
+5. PHP updates complaints: status, updated_at = NOW()
+6. If closing: also sets closed_at = NOW()
+7. EM is redirected back to the complaint detail page
 ```
 
 ---
 
 ## 8. Message/Discussion System
 
-Messages are only shown when a complaint's status is `'pending'`. This is enforced in both the User view and EM view: the message form and the message thread are wrapped in a PHP `if ($complaint['status'] === 'pending')` check.
+Messages are only shown when a complaint's status is `'pending'`. This is enforced in both the User and EM views: the message form and thread are wrapped in a PHP `if ($complaint['status'] === 'pending')` check.
 
 ### Message Display
 
-Messages are displayed in chronological order (oldest first) using a simple query:
+Messages are displayed in chronological order (oldest first):
 
 ```sql
 SELECT m.message_text, m.sent_at, u.full_name, u.role
@@ -387,22 +391,22 @@ WHERE m.complaint_id = ?
 ORDER BY m.sent_at ASC
 ```
 
-Each message bubble shows:
-- Sender name
-- Role tag (User / EM)
-- Message text
-- Timestamp
-
-CSS classes differentiate the two sides: `.message-user` floats left, `.message-em` floats right (or uses background color). This gives a basic chat-like appearance without any JavaScript.
+Each message shows: sender name, role tag (user / em), message text, and timestamp.
 
 ### Sending a Message
 
-The message form is a simple `<form method="POST" action="/message_send.php">`. It contains:
-- A hidden `complaint_id` field
-- A `textarea` for the message
-- A submit button
+The message form POSTs to `message_send.php`, which:
+1. Verifies the session and that the role is `user` or `em`.
+2. Verifies the complaint exists and its status is `pending`.
+3. For `user` role: verifies the complaint belongs to their `user_id`.
+4. Inserts into the `messages` table.
+5. Redirects back to the complaint detail page.
 
-`message_send.php` validates the inputs, inserts into the `messages` table, and redirects back to the complaint detail page. There is no AJAX, no real-time updates. The user refreshes the page to see new messages. This is intentional simplicity.
+There is no AJAX and no real-time updates. The page must be refreshed to see new messages.
+
+### Append-Only
+
+Messages cannot be edited or deleted after sending. This preserves a clean audit trail.
 
 ---
 
@@ -410,113 +414,105 @@ The message form is a simple `<form method="POST" action="/message_send.php">`. 
 
 ```
 ems/
-├── index.php                  ← Landing page (two login buttons)
-├── login.php                  ← Shared login handler (checks ?role= param)
-├── logout.php                 ← Destroys session and redirects
-├── message_send.php           ← POST handler for sending messages
+├── index.php                  ← Landing page
+├── login.php                  ← Shared login handler (?role=user|em|admin)
+├── logout.php                 ← POST-only session destroyer
+├── message_send.php           ← POST handler for messages
 │
 ├── config/
-│   └── db.php                 ← Database connection (PDO/ODBC)
+│   ├── db.php                 ← Database connection — git-ignored, do not commit
+│   └── db.example.php         ← Template: copy to db.php and fill in credentials
 │
 ├── includes/
-│   ├── auth.php               ← require_role() function
-│   ├── helpers.php            ← Utility functions (generate_login_id, generate_password, etc.)
+│   ├── auth.php               ← require_role(), authenticate_login(), session helpers
+│   ├── helpers.php            ← generate_login_id(), generate_password(), text_truncate()
 │   ├── header.php             ← HTML <head> + navigation bar partial
-│   └── footer.php             ← Closing HTML tags, footer partial
+│   └── footer.php             ← Closing HTML tags + main.js script tag
 │
 ├── admin/
-│   ├── login.php              ← Admin-specific login page
-│   ├── dashboard.php          ← Stats overview (user count, complaint counts by status)
-│   ├── users.php              ← List all users
-│   ├── user_create.php        ← Create user form + handler
-│   ├── user_edit.php          ← Edit user form + handler (?id=X)
-│   ├── user_delete.php        ← POST-only delete action (?id=X)
-│   └── import_users.php       ← CSV upload + import logic
+│   ├── login.php              ← Redirects to /login.php?role=admin
+│   ├── dashboard.php          ← User counts + complaint stats by status
+│   ├── users.php              ← List all users; toggle deactivated view
+│   ├── user_create.php        ← Create user; auto-generate credentials
+│   ├── user_edit.php          ← Edit user details and active status
+│   ├── user_delete.php        ← POST-only soft-delete (is_active = 0)
+│   ├── import_users.php       ← CSV bulk import with credential preview
+│   ├── complaints.php         ← Read-only complaint list, filter by status
+│   └── complaint_view.php     ← Read-only complaint detail + message thread
 │
 ├── user/
-│   ├── dashboard.php          ← User's complaint list
-│   ├── complaint_new.php      ← New complaint form + handler
-│   └── complaint_view.php     ← Complaint detail + message thread (?id=X)
+│   ├── dashboard.php          ← User's own complaint list
+│   ├── complaint_new.php      ← New complaint form (500-char limit)
+│   └── complaint_view.php     ← Complaint detail + message thread (pending only)
 │
 ├── em/
-│   ├── dashboard.php          ← All complaints list, filterable
-│   ├── complaint_view.php     ← Complaint detail + status updater + message thread (?id=X)
-│   └── status_update.php      ← POST-only handler for status changes
+│   ├── dashboard.php          ← All complaints, sortable by column
+│   ├── complaint_view.php     ← Complaint detail + status updater + message thread
+│   └── status_update.php      ← POST-only status transition handler
 │
-└── assets/
-    ├── css/
-    │   └── style.css          ← All application styles
-    └── js/
-        └── main.js            ← Minor UI interactions (char counter, confirm dialogs)
+├── assets/
+│   ├── css/style.css          ← All application styles
+│   └── js/main.js             ← Character counter (data-char-counter attribute)
+│
+├── scripts/
+│   └── init_db.php            ← Creates MySQL tables and seeds default accounts
+│
+├── .gitignore                 ← Excludes config/db.php
+└── nixpacks.toml              ← Deployment: PHP 8.2 + pdo + pdo_mysql
 ```
 
-**Key principle:** Each file handles one thing. Pages that show a form also handle the form submission (check `if ($_SERVER['REQUEST_METHOD'] === 'POST')`). This keeps related logic together and reduces the number of files a developer needs to navigate.
+**Key principle:** Each file handles one thing. Pages that show a form also handle the POST submission (check `$_SERVER['REQUEST_METHOD'] === 'POST'`). This keeps related logic together and reduces the number of files to navigate.
 
 ---
 
 ## 10. Development Roadmap
 
-Build in this order. Each phase is independently testable before moving to the next.
-
 ### Phase 1 — Foundation (Days 1–2)
-- Set up the local SQLite database and create all three tables.
-- Create `config/db.php` with the database connection.
-- Test the connection by running a simple SELECT query.
+- Set up the MySQL database and create all three tables via `scripts/init_db.php`.
+- Create `config/db.php` with the PDO connection.
 - Create `includes/auth.php`, `includes/header.php`, `includes/footer.php`.
-- Create `index.php` (just the two login buttons, no logic yet).
+- Create `index.php`.
 
 ### Phase 2 — Authentication (Days 3–4)
-- Build `login.php` — form, POST handler, session creation, redirect logic.
+- Build `login.php` — form, POST handler, session creation, redirect.
 - Build `logout.php`.
-- Test: manually insert a test user into the DB and verify login/logout works.
-- Build the `require_role()` gate in `auth.php` and add it to one test page.
+- Build `require_role()` in `auth.php`.
 
 ### Phase 3 — Admin User Management (Days 5–7)
-- Build `admin/users.php` (list all users from DB).
-- Build `admin/user_create.php` (form + insert + auto-generate login ID and password).
-- Build `admin/user_edit.php` (load user data, form + update query).
-- Build `admin/user_delete.php` (soft-delete: set is_active = 0).
-- Test full CRUD cycle.
+- Build `admin/users.php`, `admin/user_create.php`, `admin/user_edit.php`, `admin/user_delete.php`.
+- Test full CRUD cycle including soft-delete.
 
 ### Phase 4 — Complaint Submission (Days 8–9)
-- Build `user/dashboard.php` (list own complaints with status badges).
-- Build `user/complaint_new.php` (form + insert, 500-char limit).
-- Test: log in as a user, submit a complaint, verify it appears on the dashboard.
+- Build `user/dashboard.php` and `user/complaint_new.php`.
 
 ### Phase 5 — EM Complaint Management (Days 10–12)
-- Build `em/dashboard.php` (list all complaints, show status, submitter name).
-- Build `em/complaint_view.php` (complaint details + status update form).
-- Build `em/status_update.php` (POST handler for status changes with transition validation).
-- Build `user/complaint_view.php` (read-only complaint detail for the user).
-- Test the full lifecycle: submit → open → pending → closed.
+- Build `em/dashboard.php`, `em/complaint_view.php`, `em/status_update.php`.
+- Build `user/complaint_view.php` (read-only detail for the submitting user).
 
 ### Phase 6 — Messaging System (Days 13–14)
-- Build `message_send.php` (POST handler for inserting messages).
-- Add message thread display to both `user/complaint_view.php` and `em/complaint_view.php` (show only when status = 'pending').
-- Test: EM marks a complaint as Pending, both User and EM exchange messages.
+- Build `message_send.php`.
+- Add message thread display to both `user/complaint_view.php` and `em/complaint_view.php`.
 
 ### Phase 7 — Admin Dashboard and CSV Import (Days 15–17)
-- Build `admin/dashboard.php` (query COUNT for each complaint status, display summary).
-- Build `admin/import_users.php` (upload CSV, parse with `fgetcsv()`, loop through rows and insert users, generate login IDs and passwords, display results).
+- Build `admin/dashboard.php`.
+- Build `admin/import_users.php`.
+- Build `admin/complaints.php` and `admin/complaint_view.php` (read-only complaint access for Admin).
 
 ### Phase 8 — Polish and Testing (Days 18–20)
-- Apply consistent CSS styling across all pages.
-- Add JavaScript character counter to the complaint description textarea.
-- Add confirmation dialogs for delete actions.
-- Test all edge cases: empty forms, invalid transitions, duplicate login IDs, SQL errors.
-- Review all pages for missing authorization checks.
+- Apply consistent CSS across all pages.
+- Add JavaScript character counter to the complaint textarea.
+- Test all edge cases: empty forms, invalid transitions, duplicate login IDs, direct POST attacks.
+- Review all pages for missing `require_role()` calls.
 
 ---
 
 ## 11. Security Considerations
 
-These are practical, beginner-appropriate measures that cover the most important vulnerabilities for a simple internal PHP application.
-
 ### Prepared Statements — Most Important
-Never build SQL queries by concatenating user input. Use PDO prepared statements for every query involving user-supplied data:
+Never build SQL queries by concatenating user input:
 
 ```php
-// WRONG — never do this
+// WRONG
 $query = "SELECT * FROM users WHERE login_id = '" . $_POST['login_id'] . "'";
 
 // CORRECT
@@ -524,93 +520,128 @@ $stmt = $pdo->prepare("SELECT * FROM users WHERE login_id = ?");
 $stmt->execute([$_POST['login_id']]);
 ```
 
-This prevents SQL injection — the most common and most damaging attack on PHP applications.
-
 ### Password Hashing
-- Use `password_hash($password, PASSWORD_DEFAULT)` to store passwords.
-- Use `password_verify($input, $stored_hash)` to check them at login.
-- Never store or log plain-text passwords anywhere.
+- `password_hash($password, PASSWORD_DEFAULT)` to store.
+- `password_verify($input, $stored_hash)` to check at login.
+- Never store or log plain-text passwords.
 
 ### Output Escaping (XSS Prevention)
-Wrap every variable before printing it inside HTML with `htmlspecialchars()`:
+Every variable printed inside HTML must be wrapped:
 
 ```php
-echo htmlspecialchars($user['full_name'], ENT_QUOTES, 'UTF-8');
+echo htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 ```
 
-This prevents Cross-Site Scripting (XSS), where an attacker injects JavaScript into your pages by submitting it as form data.
-
 ### Session Security
-- Call `session_regenerate_id(true)` immediately after a successful login.
-- Set a session timeout: if `$_SESSION['last_active']` is more than 30 minutes ago, destroy the session and redirect to login.
-- Set `session.cookie_httponly = 1` in `php.ini` (prevents JavaScript from reading the session cookie).
+- `session_regenerate_id(true)` immediately after successful login.
+- `session.cookie_httponly = 1` in `php.ini` (prevents JS from reading the session cookie).
+- Consider a 30-minute idle timeout using `$_SESSION['last_active']`.
 
 ### Form Submission Method
-All actions that change data (create, update, delete, send message) must use `method="POST"`. Never use GET requests for actions that modify the database. This prevents accidental re-submissions when the browser back button is used, and prevents CSRF via simple URL manipulation.
+All state-changing actions (create, update, delete, send message, logout) use `method="POST"`. Pages that receive a non-POST request redirect away without processing.
 
 ### Role-Based Access on Every Page
-Every protected page must call `require_role($role)` as its very first line. If this check is missing from even one page, a user can bypass access control by navigating directly to that URL.
+Every protected page must call `require_role($role)` as its very first line.
 
 ### File Upload Safety (CSV Import)
-- Check the uploaded file's extension and MIME type before processing.
-- Use `fgetcsv()` to parse CSV — do not use `eval()` or `exec()` on file contents.
-- Reject files above a reasonable size limit (e.g., 1MB).
+- `fgetcsv()` is used to parse CSV safely — no `eval()` or `exec()`.
+- File extension and MIME type validation and a size limit (e.g. 1 MB) should be added (see Section 14).
 
 ### Minimal Error Exposure
-In production, turn off PHP error display in `php.ini`:
+In production, set in `php.ini`:
 ```
 display_errors = Off
 log_errors = On
 error_log = /path/to/ems_errors.log
 ```
-Detailed error messages should go to a log file, not to the browser screen where they could expose database structure or file paths.
 
 ---
 
 ## 12. Future Enhancements
 
-These are not needed now but are worth designing the system to accommodate.
-
-- **Password Reset:** Allow Admin to reset a user's password, which generates a new random password and displays it.
-- **Email Notifications:** Send an email to the User when their complaint status changes. Requires a mail server (SMTP) and PHP's `mail()` function or PHPMailer library.
-- **Complaint Categories:** Add a `category` column to `complaints` (e.g., Electrical, Plumbing, Network). Useful for EM to filter and assign work.
-- **Assigned EM Personnel:** Add an `assigned_em_id` column to `complaints` so a specific EM person is responsible for each complaint.
-- **Admin Can View Complaints:** A simple read-only view for Admin to audit all complaints without being able to modify them.
-- **Search and Filtering:** Add search by name or login ID on the Admin user list; filter complaints by date range or status on the EM dashboard.
-- **Audit Log:** A `audit_log` table that records who changed what and when (e.g., "EM-0003 changed complaint #45 from open to pending at 14:32").
-- **Complaint Attachments:** Allow users to upload a photo (e.g., a photo of a broken piece of equipment) when submitting a complaint.
-- **Printable Complaint Report:** A print-friendly view of a closed complaint showing the full history from submission to resolution.
+- **Password Reset:** Allow Admin to reset a user's password and display the new plain-text credential once.
+- **Email Notifications:** Email the User when their complaint status changes (PHPMailer + SMTP).
+- **Complaint Categories:** Add a `category` column (Electrical, Plumbing, Network) for EM filtering.
+- **Assigned EM Personnel:** An `assigned_em_id` column on complaints to track responsibility.
+- **Search and Filtering:** Search by name/login on the Admin user list; filter complaints by date range.
+- **Audit Log:** An `audit_log` table recording who changed what and when.
+- **Complaint Attachments:** Allow users to upload a photo with their complaint submission.
+- **Printable Complaint Report:** A print-friendly view of a closed complaint showing the full history.
 
 ---
 
 ## 13. Assumptions, Missing Requirements, and Design Notes
 
-### Clarifications Assumed in This Design
+**"Personal Number"** is assumed to mean a government-issued identification number or employee number, stored as plain text.
 
-**"Personal Number"** is assumed to mean a government-issued identification number or an official employee/personnel number. It is stored as a plain text string to handle varying formats.
+**EM accounts** are created by the Admin the same way User accounts are, differentiated only by the `role` column.
 
-**EM personnel accounts** are created and managed by the Admin, the same way User accounts are. The `role` column distinguishes them. The Admin cannot directly create another Admin account (that is a manual DB operation).
+**Single Admin account** is assumed for v1. The schema already supports multiple admins.
 
-**Single Admin account** is assumed. There is one Admin for this system. If multiple admins are needed in the future, the `users` table already supports it — just insert another row with `role = 'admin'`.
+**Messages are append-only.** They cannot be edited or deleted, preserving a clean audit trail.
 
-**Messages are append-only.** Messages cannot be edited or deleted after sending. This keeps the implementation simple and also preserves a clean audit trail of the discussion.
+**No email notifications in v1.** Admin physically hands credentials to users after creation.
 
-**No email notifications in v1.** The system assumes Admin will physically hand credentials to users after creation. If this is impractical, a password reset mechanism should be added early.
+**Complaint descriptions are typed text only.** No file attachments in this version.
 
-**The complaint description is typed text only.** There are no file attachments in this version.
+**Login ID generation race condition:** If two accounts are created simultaneously, both could compute the same next ID. The `UNIQUE` constraint on `login_id` catches this at the database level; PHP should display a friendly retry message.
 
-### Potential Issues to Address Before Development
+**Status transition enforcement:** PHP validates the transition in `em/status_update.php` — never rely on the form alone. A direct POST with arbitrary values must be rejected server-side.
 
-**SQLite Driver on the Server:** Confirm that the PHP server has the SQLite PDO driver enabled (`pdo_sqlite`). This is the only database dependency required for local development.
+**Soft delete:** `is_active = 0` is used instead of hard delete to preserve complaint history integrity. The Admin user list shows only active users by default; a "Show deactivated" toggle reveals the rest.
 
-**Database File:** The SQLite database is stored locally as `data/ems.sqlite`. If the file does not exist, the app will create it automatically when the first database connection is opened.
+**No "Forgot Password" flow:** Users who forget their password must contact Admin.
 
-**Login ID Generation Race Condition:** If two Admin users try to create accounts simultaneously, the sequential ID generation could assign the same ID twice. For a small internal system this is negligible, but the `UNIQUE` constraint on `login_id` will catch it at the database level and PHP should display a friendly retry message.
+---
 
-**Status Transition Enforcement:** PHP must explicitly validate that the requested transition is legal (`open→pending` or `pending→closed`) before running the UPDATE query. Do not rely on the form alone — a malicious or confused user could POST directly to `status_update.php` with arbitrary values.
+## 14. Changes Still Needed
 
-**Soft Delete vs. Hard Delete:** The design uses `is_active = 0` for "deleting" users. This preserves complaint history integrity. The Admin user list should only show `is_active = 1` users by default, with an optional "Show deactivated" toggle if needed.
+This section lists gaps and corrections between the original design document and the actual implementation, plus outstanding work that should be completed before the project is considered production-ready.
 
-**CSV Import Format:** The expected CSV column order for import must be documented clearly for Admin users. A sample CSV file should be provided alongside the application. Suggested column order: `Full Name, Contact Number, Personal Number, Address`.
+---
 
-**No "Forgot Password" Flow:** There is no self-service password reset. Users who forget their password must contact the Admin for a reset. This is acceptable for a small internal system.
+### Corrections to the Original README
+
+| # | Original claim | Actual state |
+|---|---|---|
+| 1 | Database described as SQLite with file at `data/ems.sqlite` | Production database is **MySQL**. SQLite is still supported as a fallback via `EMS_DB_DSN` but is not the default. The schema in `scripts/init_db.php` uses MySQL syntax (`ENGINE=InnoDB`, `ENUM`, `ON UPDATE CURRENT_TIMESTAMP`). |
+| 2 | Admin login described as a separate page at `admin/login.php` | `admin/login.php` exists but only issues a redirect to `/login.php?role=admin`. There is no separate admin login form — all roles share `login.php`. |
+| 3 | Landing page described as having two login buttons (User and EM only) | The landing page no longer has login buttons. Login links for all three roles appear in the **nav bar** on every page. |
+| 4 | Session stores `user_id`, `role`, `full_name` | Session also stores **`login_id`** (set in `start_auth_session()` in `includes/auth.php`). |
+| 5 | Password generation described as 8 characters (`bin2hex(random_bytes(4))`) | Actual implementation generates **10 characters** using `random_int()` over a custom alphabet (no ambiguous characters like `0`, `O`, `l`, `1`). |
+| 6 | `admin/` section does not list complaint pages | Two admin complaint pages now exist: `admin/complaints.php` (filterable list) and `admin/complaint_view.php` (read-only detail + message thread). The permissions table has been updated above to reflect this. |
+| 7 | EM dashboard described as filterable by status | Actual EM dashboard (`em/dashboard.php`) is **sortable by column** (ID, status, user name, submitted date) — not filtered. Filtering by status exists only in the Admin complaints view. |
+
+---
+
+### Outstanding Work (Not Yet Implemented)
+
+#### High Priority — Should be done before any real use
+
+- **CSV file validation (import_users.php):** The current implementation does not check the uploaded file's MIME type or enforce a maximum file size. Add both before allowing public-facing use.
+
+- **Session idle timeout:** The login flow regenerates the session ID on login but does not enforce a timeout for idle sessions. Add a `last_active` timestamp to the session and redirect to login after 30 minutes of inactivity.
+
+- **CSRF protection on forms:** State-changing forms (status update, message send, user delete) are not protected by a CSRF token. Add a random token stored in the session and validated on each POST. This is especially important for `admin/user_delete.php` and `em/status_update.php`.
+
+- **`php.ini` hardening for production:** `display_errors` should be confirmed off and `error_log` should be configured. Document the required `php.ini` settings in a deployment checklist.
+
+#### Medium Priority — Quality and usability improvements
+
+- **Friendly retry on duplicate login ID:** If two accounts are created simultaneously and the `UNIQUE` constraint fires, the user sees a raw PDO exception. Catch the exception in `user_create.php` and `import_users.php` and display a human-readable message.
+
+- **"Show deactivated" toggle on Admin user list:** The toggle exists in `admin/users.php` but deactivated users have no visual distinction (different row colour, strikethrough) to make them immediately recognizable. Add a CSS class for inactive rows.
+
+- **Pagination:** The complaint lists in `admin/complaints.php` and `em/dashboard.php` load all rows in one query. Add `LIMIT` / `OFFSET` pagination once the dataset grows.
+
+- **Character counter on complaint form:** `user/complaint_new.php` uses the `data-char-counter` attribute and `main.js` — but the counter text reads `"0 characters"` on load rather than reflecting any pre-filled value from a failed submission. Ensure the counter updates on page load in addition to on input.
+
+#### Low Priority — Nice to have
+
+- **Sample CSV file:** The original README recommends providing a sample CSV for the bulk import feature. No sample file has been added to the repo yet.
+
+- **Confirm dialog on Deactivate button:** `admin/users.php` has `onclick="return confirm(...)"` on the Deactivate button, but there is no equivalent protection on any other destructive action. Audit all destructive actions and ensure a confirmation step is present.
+
+- **Admin password reset:** Admins currently have no way to reset a user's password through the UI. Implement a "Reset Password" action on `admin/user_edit.php` that generates a new credential and displays it once.
+
+- **`admin/login.php` redirect notice:** The redirect in `admin/login.php` is a bare `header('Location: ...')` with no fallback HTML for clients that do not follow redirects. Add a `<meta http-equiv="refresh">` fallback and a link.
